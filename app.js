@@ -111,10 +111,13 @@ themeToggle.addEventListener("click", () => {
 // =====================================================
 //  SIDEBAR MOBILE
 // =====================================================
-sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
+sidebarToggle.addEventListener("click", (e) => {
+  e.stopPropagation();
+  sidebar.classList.toggle("open");
+});
 document.addEventListener("click", (e) => {
   if (window.innerWidth <= 680 && sidebar.classList.contains("open")) {
-    if (!sidebar.contains(e.target) && e.target !== sidebarToggle) {
+    if (!sidebar.contains(e.target) && !sidebarToggle.contains(e.target)) {
       sidebar.classList.remove("open");
     }
   }
@@ -192,6 +195,11 @@ async function createNote() {
 async function saveNote() {
   if (!currentNoteId || !currentUser) return;
   const title = noteTitle.value.trim();
+  // Sync checkbox checked state to HTML attribute so it's captured in innerHTML
+  editor.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    if (cb.checked) cb.setAttribute("checked", "");
+    else cb.removeAttribute("checked");
+  });
   const content = editor.innerHTML;
   await setDoc(
     doc(db, "users", currentUser.uid, "notes", currentNoteId),
@@ -322,16 +330,45 @@ highlightBtn.addEventListener("mousedown", (e) => {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) return;
 
-  // Check if already highlighted
   const range = sel.getRangeAt(0);
-  const parent = range.commonAncestorContainer.parentElement;
-  if (parent && parent.tagName === "MARK") {
-    const text = document.createTextNode(parent.textContent);
-    parent.replaceWith(text);
-  } else {
+
+  // Check if selection is inside or contains a <mark>
+  let ancestor = range.commonAncestorContainer;
+  if (ancestor.nodeType === 3) ancestor = ancestor.parentElement;
+
+  // Case 1: caret/selection is inside a <mark>
+  const parentMark = ancestor.closest("mark");
+  if (parentMark) {
+    parentMark.replaceWith(...parentMark.childNodes);
+    scheduleSave();
+    return;
+  }
+
+  // Case 2: selection contains <mark> elements — unwrap them all
+  const fragment = range.cloneContents();
+  if (fragment.querySelector("mark")) {
+    // Extract, unwrap all marks, reinsert
+    const div = document.createElement("div");
+    div.appendChild(fragment);
+    div.querySelectorAll("mark").forEach(m => m.replaceWith(...m.childNodes));
+    range.deleteContents();
+    range.insertNode(div);
+    // Unwrap the div itself
+    const parent = div.parentNode;
+    while (div.firstChild) parent.insertBefore(div.firstChild, div);
+    parent.removeChild(div);
+    scheduleSave();
+    return;
+  }
+
+  // Case 3: no mark — wrap in one
+  try {
     const mark = document.createElement("mark");
     range.surroundContents(mark);
+  } catch {
+    document.execCommand("insertHTML", false, `<mark>${range.toString()}</mark>`);
   }
+
   editor.focus();
   scheduleSave();
 });
@@ -344,26 +381,45 @@ checklistBtn.addEventListener("mousedown", (e) => {
   scheduleSave();
 });
 
-function insertChecklist() {
-  const ul = document.createElement("ul");
-  ul.className = "checklist";
+function moveCaret(node, offset) {
+  const sel = window.getSelection();
+  const r = document.createRange();
+  r.setStart(node, offset);
+  r.collapse(true);
+  sel.removeAllRanges();
+  sel.addRange(r);
+}
+
+function makeChecklistItem(text = "") {
   const li = document.createElement("li");
   const cb = document.createElement("input");
   cb.type = "checkbox";
   const span = document.createElement("span");
-  span.textContent = " ";
+  if (text) {
+    span.textContent = text;
+  } else {
+    span.appendChild(document.createElement("br"));
+  }
   li.appendChild(cb);
   li.appendChild(span);
-  ul.appendChild(li);
+  return li;
+}
 
-  const sel = window.getSelection();
-  if (sel && !sel.isCollapsed) {
-    const range = sel.getRangeAt(0);
-    range.deleteContents();
-    range.insertNode(ul);
-  } else {
-    // Insert at cursor
-    document.execCommand("insertHTML", false, ul.outerHTML);
+function insertChecklist() {
+  const ul = document.createElement("ul");
+  ul.className = "checklist";
+  ul.appendChild(makeChecklistItem());
+
+  document.execCommand("insertHTML", false, ul.outerHTML);
+
+  // Move caret into the span of the newly inserted item
+  const lists = editor.querySelectorAll("ul.checklist");
+  const newList = lists[lists.length - 1];
+  if (newList) {
+    const span = newList.querySelector("li span");
+    if (span) {
+      moveCaret(span, 0);
+    }
   }
 }
 
@@ -431,27 +487,136 @@ editor.addEventListener("keyup", updateToolbarState);
 editor.addEventListener("mouseup", updateToolbarState);
 
 // =====================================================
-//  KEYBOARD SHORTCUTS
+//  KEYBOARD SHORTCUTS + CHECKLIST + BLOCKQUOTE ESCAPE
 // =====================================================
 editor.addEventListener("keydown", (e) => {
+  // Ctrl/Cmd shortcuts
   if (e.ctrlKey || e.metaKey) {
     if (e.key === "b") { e.preventDefault(); document.execCommand("bold"); }
     if (e.key === "i") { e.preventDefault(); document.execCommand("italic"); }
     if (e.key === "u") { e.preventDefault(); document.execCommand("underline"); }
     if (e.key === "s") { e.preventDefault(); saveNote(); }
+    return;
   }
-});
 
-// Tab in editor — insert 2 spaces
-editor.addEventListener("keydown", (e) => {
+  // Tab — insert 2 spaces
   if (e.key === "Tab") {
     e.preventDefault();
     document.execCommand("insertText", false, "  ");
+    return;
+  }
+
+  if (e.key !== "Enter" && e.key !== "Backspace") return;
+
+  const sel = window.getSelection();
+  if (!sel || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+
+  // Find ancestor element matching selector from caret position
+  function getAncestor(selector) {
+    let node = range.startContainer;
+    // Text nodes don't have closest(), go to parent element
+    if (node.nodeType !== 1) node = node.parentElement;
+    if (!node) return null;
+    // Skip INPUT elements (the checkbox)
+    if (node.tagName === "INPUT") node = node.parentElement;
+    return node ? node.closest(selector) : null;
+  }
+
+  const checklist = getAncestor("ul.checklist");
+  const li = checklist ? getAncestor("li") : null;
+
+  // ── CHECKLIST ENTER ──
+  if (checklist && li && e.key === "Enter") {
+    e.preventDefault();
+
+    // Get text content of li, but ignore the checkbox input's value
+    // Clone li, remove input, read text
+    const liClone = li.cloneNode(true);
+    liClone.querySelectorAll("input").forEach(el => el.remove());
+    const liText = (liClone.textContent || "").trim();
+
+    if (liText === "") {
+      // Empty item → exit checklist, insert paragraph after
+      const p = document.createElement("p");
+      p.innerHTML = "<br>";
+      checklist.after(p);
+      li.remove();
+      if (checklist.querySelectorAll("li").length === 0) checklist.remove();
+      moveCaret(p, 0);
+    } else {
+      // Has text → create new empty item below this one
+      const newLi = makeChecklistItem();
+      li.after(newLi);
+      const newSpan = newLi.querySelector("span");
+      moveCaret(newSpan, 0);
+    }
+    scheduleSave();
+    return;
+  }
+
+  // ── CHECKLIST BACKSPACE on empty item ──
+  if (checklist && li && e.key === "Backspace" && range.collapsed) {
+    const liClone = li.cloneNode(true);
+    liClone.querySelectorAll("input").forEach(el => el.remove());
+    const liText = (liClone.textContent || "").trim();
+    if (liText === "") {
+      e.preventDefault();
+      const prevLi = li.previousElementSibling;
+      li.remove();
+      if (checklist.querySelectorAll("li").length === 0) {
+        checklist.remove();
+      } else if (prevLi) {
+        const prevSpan = prevLi.querySelector("span");
+        if (prevSpan) {
+          const last = prevSpan.lastChild || prevSpan;
+          moveCaret(last, last.nodeType === 3 ? last.textContent.length : 0);
+        }
+      }
+      scheduleSave();
+      return;
+    }
+  }
+
+  // ── BLOCKQUOTE ESCAPE ──
+  // Strategy: let the browser handle Enter normally (new line inside blockquote).
+  // Only intercept when the caret is on a line that is empty (user pressed Enter twice).
+  const blockquote = getAncestor("blockquote");
+
+  if (blockquote && e.key === "Enter") {
+    // Find the direct child of blockquote containing the caret
+    let caretEl = range.startContainer;
+    if (caretEl.nodeType !== 1) caretEl = caretEl.parentElement;
+    if (caretEl && caretEl.tagName === "INPUT") caretEl = caretEl.parentElement;
+    // Walk up until direct child of blockquote
+    while (caretEl && caretEl.parentElement !== blockquote) {
+      caretEl = caretEl.parentElement;
+    }
+
+    const lineText = caretEl
+      ? (caretEl.textContent || "").trim()
+      : "";
+
+    if (lineText === "") {
+      e.preventDefault();
+      // Remove the empty line from blockquote
+      if (caretEl && blockquote.contains(caretEl)) {
+        blockquote.removeChild(caretEl);
+      }
+      // Insert paragraph after blockquote
+      const p = document.createElement("p");
+      p.innerHTML = "<br>";
+      blockquote.after(p);
+      moveCaret(p, 0);
+      scheduleSave();
+    }
+    // Non-empty line: fall through, browser adds new line inside blockquote
   }
 });
 
+
 // =====================================================
-//  HELPERS
+//  HELPERSRS
 // =====================================================
 function plainText(html) {
   const tmp = document.createElement("div");
