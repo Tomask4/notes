@@ -496,18 +496,27 @@ body {
 }
 
 /* Checklist */
-.editor ul.checklist { list-style: none; padding-left: 0.4em; }
+.editor ul.checklist { list-style: none; padding-left: 0.2em; }
 .editor ul.checklist li {
   display: flex;
-  align-items: flex-start;
+  align-items: baseline;
   gap: 8px;
   margin: 0.25em 0;
+  line-height: 1.7;
 }
 .editor ul.checklist li input[type="checkbox"] {
-  margin-top: 4px;
+  position: relative;
+  top: 2px;          /* nudge down to sit on the text baseline */
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
   accent-color: var(--text);
   cursor: pointer;
-  flex-shrink: 0;
+}
+.editor ul.checklist li span {
+  flex: 1;
+  min-width: 0;
+  outline: none;
 }
 .editor ul.checklist li.checked span { 
   text-decoration: line-through; 
