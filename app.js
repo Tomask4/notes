@@ -73,6 +73,9 @@ const checklistBtn = document.getElementById("checklist-btn");
 const highlightBtn = document.getElementById("highlight-btn");
 const codeBlockBtn = document.getElementById("code-block-btn");
 const tableBtn = document.getElementById("table-btn");
+const highlightArrow = document.getElementById("highlight-arrow");
+const highlightDropdown = document.getElementById("highlight-dropdown");
+const highlightPreview = document.getElementById("highlight-preview");
 
 // =====================================================
 //  STATE
@@ -82,6 +85,7 @@ let currentNoteId = null;
 let allNotes = [];
 let saveTimer = null;
 let unsubNotes = null;
+let currentHighlightColor = "#fde68a";
 
 // =====================================================
 //  THEME
@@ -324,53 +328,102 @@ document.querySelectorAll("[data-command]").forEach((btn) => {
   });
 });
 
-// Highlight
-highlightBtn.addEventListener("mousedown", (e) => {
-  e.preventDefault();
+// ── HIGHLIGHT COLOR PICKER ──
+function applyHighlight(color) {
   const sel = window.getSelection();
   if (!sel || sel.isCollapsed) return;
-
   const range = sel.getRangeAt(0);
 
-  // Check if selection is inside or contains a <mark>
+  // Find existing marks in/around selection
   let ancestor = range.commonAncestorContainer;
   if (ancestor.nodeType === 3) ancestor = ancestor.parentElement;
-
-  // Case 1: caret/selection is inside a <mark>
   const parentMark = ancestor.closest("mark");
-  if (parentMark) {
-    parentMark.replaceWith(...parentMark.childNodes);
-    scheduleSave();
-    return;
+
+  // Helper: unwrap all marks in a range
+  function unwrapMarksInRange() {
+    const fragment = range.cloneContents();
+    if (!parentMark && !fragment.querySelector("mark")) return false;
+    if (parentMark) {
+      parentMark.replaceWith(...parentMark.childNodes);
+    } else {
+      const div = document.createElement("div");
+      div.appendChild(range.cloneContents());
+      div.querySelectorAll("mark").forEach(m => m.replaceWith(...m.childNodes));
+      range.deleteContents();
+      const frag = document.createDocumentFragment();
+      while (div.firstChild) frag.appendChild(div.firstChild);
+      range.insertNode(frag);
+    }
+    return true;
   }
 
-  // Case 2: selection contains <mark> elements — unwrap them all
-  const fragment = range.cloneContents();
-  if (fragment.querySelector("mark")) {
-    // Extract, unwrap all marks, reinsert
-    const div = document.createElement("div");
-    div.appendChild(fragment);
-    div.querySelectorAll("mark").forEach(m => m.replaceWith(...m.childNodes));
-    range.deleteContents();
-    range.insertNode(div);
-    // Unwrap the div itself
-    const parent = div.parentNode;
-    while (div.firstChild) parent.insertBefore(div.firstChild, div);
-    parent.removeChild(div);
-    scheduleSave();
-    return;
+  if (!color) {
+    // Remove marking
+    unwrapMarksInRange();
+  } else {
+    // Remove any existing mark first, then apply new color
+    unwrapMarksInRange();
+    // Re-get range after DOM changes
+    const sel2 = window.getSelection();
+    if (!sel2 || !sel2.rangeCount) return;
+    const range2 = sel2.getRangeAt(0);
+    // Determine text color based on bg brightness
+    const textColor = getLabelColor(color);
+    try {
+      const mark = document.createElement("mark");
+      mark.style.background = color;
+      mark.style.color = textColor;
+      range2.surroundContents(mark);
+    } catch {
+      document.execCommand("insertHTML", false,
+        `<mark style="background:${color};color:${textColor}">${range2.toString()}</mark>`);
+    }
   }
-
-  // Case 3: no mark — wrap in one
-  try {
-    const mark = document.createElement("mark");
-    range.surroundContents(mark);
-  } catch {
-    document.execCommand("insertHTML", false, `<mark>${range.toString()}</mark>`);
-  }
-
   editor.focus();
   scheduleSave();
+}
+
+function getLabelColor(hex) {
+  // Parse hex to RGB and calculate relative luminance
+  const r = parseInt(hex.slice(1,3),16)/255;
+  const g = parseInt(hex.slice(3,5),16)/255;
+  const b = parseInt(hex.slice(5,7),16)/255;
+  const luminance = 0.299*r + 0.587*g + 0.114*b;
+  return luminance > 0.55 ? "#78350f" : "#fff";
+}
+
+// Main highlight button — apply current color
+highlightBtn.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  highlightDropdown.classList.add("hidden");
+  applyHighlight(currentHighlightColor);
+});
+
+// Arrow — toggle dropdown
+highlightArrow.addEventListener("mousedown", (e) => {
+  e.preventDefault();
+  highlightDropdown.classList.toggle("hidden");
+});
+
+// Color swatches
+document.querySelectorAll(".hl-color").forEach(btn => {
+  btn.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    const color = btn.dataset.color;
+    if (color) {
+      currentHighlightColor = color;
+      highlightPreview.style.background = color;
+    }
+    highlightDropdown.classList.add("hidden");
+    applyHighlight(color); // empty string = remove
+  });
+});
+
+// Close dropdown on outside click
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".highlight-picker-wrap")) {
+    highlightDropdown.classList.add("hidden");
+  }
 });
 
 // Checklist
@@ -444,11 +497,16 @@ codeBlockBtn.addEventListener("mousedown", (e) => {
 });
 
 // Table
-tableBtn.addEventListener("click", () => tableModal.classList.remove("hidden"));
+tableBtn.addEventListener("click", () => {
+  // Reset to sane defaults each time
+  tableRows.value = "3";
+  tableCols.value = "3";
+  tableModal.classList.remove("hidden");
+});
 tableCancel.addEventListener("click", () => tableModal.classList.add("hidden"));
 tableInsert.addEventListener("click", () => {
-  const r = parseInt(tableRows.value) || 3;
-  const c = parseInt(tableCols.value) || 3;
+  const r = Math.max(1, Math.min(20, parseInt(tableRows.value) || 3));
+  const c = Math.max(1, Math.min(10, parseInt(tableCols.value) || 3));
   insertTable(r, c);
   tableModal.classList.add("hidden");
   scheduleSave();
@@ -457,17 +515,109 @@ tableModal.addEventListener("click", (e) => {
   if (e.target === tableModal) tableModal.classList.add("hidden");
 });
 
-function insertTable(rows, cols) {
-  let html = "<table><thead><tr>";
-  for (let c = 0; c < cols; c++) html += `<th>Kolom ${c + 1}</th>`;
-  html += "</tr></thead><tbody>";
-  for (let r = 0; r < rows - 1; r++) {
-    html += "<tr>";
-    for (let c = 0; c < cols; c++) html += "<td>&nbsp;</td>";
-    html += "</tr>";
+function buildTable(rows, cols) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "table-wrapper";
+
+  // Controls bar
+  const controls = document.createElement("div");
+  controls.className = "table-controls";
+  controls.contentEditable = "false";
+  ["+ Rij", "+ Kolom", "- Rij", "- Kolom"].forEach((label, i) => {
+    const btn = document.createElement("button");
+    btn.className = "table-ctrl-btn";
+    btn.textContent = label;
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      const tbl = wrapper.querySelector("table");
+      if (i === 0) addRow(tbl);
+      else if (i === 1) addCol(tbl);
+      else if (i === 2) removeRow(tbl);
+      else removeCol(tbl);
+      scheduleSave();
+    });
+    controls.appendChild(btn);
+  });
+
+  // Table
+  const table = document.createElement("table");
+  const thead = document.createElement("thead");
+  const hrow = document.createElement("tr");
+  for (let c = 0; c < cols; c++) {
+    const th = document.createElement("th");
+    th.textContent = `Kolom ${c + 1}`;
+    hrow.appendChild(th);
   }
-  html += "</tbody></table><p><br></p>";
-  document.execCommand("insertHTML", false, html);
+  thead.appendChild(hrow);
+  table.appendChild(thead);
+
+  const tbody = document.createElement("tbody");
+  for (let r = 0; r < rows - 1; r++) {
+    const tr = document.createElement("tr");
+    for (let c = 0; c < cols; c++) {
+      const td = document.createElement("td");
+      td.innerHTML = "<br>";
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+  table.appendChild(tbody);
+
+  wrapper.appendChild(controls);
+  wrapper.appendChild(table);
+  return wrapper;
+}
+
+function addRow(tbl) {
+  const cols = tbl.querySelector("tr").cells.length;
+  const tr = document.createElement("tr");
+  for (let c = 0; c < cols; c++) {
+    const td = document.createElement("td");
+    td.innerHTML = "<br>";
+    tr.appendChild(td);
+  }
+  tbl.querySelector("tbody").appendChild(tr);
+}
+
+function addCol(tbl) {
+  const rows = tbl.querySelectorAll("tr");
+  rows.forEach((row, i) => {
+    const cell = i === 0 ? document.createElement("th") : document.createElement("td");
+    cell.innerHTML = i === 0 ? `Kolom ${row.cells.length + 1}` : "<br>";
+    row.appendChild(cell);
+  });
+}
+
+function removeRow(tbl) {
+  const rows = tbl.querySelectorAll("tbody tr");
+  if (rows.length > 1) rows[rows.length - 1].remove();
+}
+
+function removeCol(tbl) {
+  const rows = tbl.querySelectorAll("tr");
+  const cols = rows[0].cells.length;
+  if (cols > 1) rows.forEach(row => row.cells[row.cells.length - 1].remove());
+}
+
+function insertTable(rows, cols) {
+  const wrapper = buildTable(rows, cols);
+  // Insert after caret or at end of editor
+  const sel = window.getSelection();
+  if (sel && sel.rangeCount) {
+    const range = sel.getRangeAt(0);
+    range.collapse(false);
+    range.insertNode(wrapper);
+    // Move caret after wrapper
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    wrapper.after(p);
+    moveCaret(p, 0);
+  } else {
+    editor.appendChild(wrapper);
+    const p = document.createElement("p");
+    p.innerHTML = "<br>";
+    editor.appendChild(p);
+  }
   editor.focus();
 }
 
@@ -612,11 +762,35 @@ editor.addEventListener("keydown", (e) => {
     }
     // Non-empty line: fall through, browser adds new line inside blockquote
   }
+
+  // ── CODE BLOCK ESCAPE — Enter on empty line exits <pre> ──
+  const pre = getAncestor("pre");
+  if (pre && e.key === "Enter") {
+    // Find the line the caret is on
+    let caretEl = range.startContainer;
+    const lineText = (caretEl.nodeType === 3 ? caretEl.textContent : caretEl.textContent || "").trim();
+    if (lineText === "") {
+      e.preventDefault();
+      // Remove the trailing empty newline from pre
+      if (caretEl.nodeType === 3 && caretEl.textContent.trim() === "" && pre.contains(caretEl)) {
+        pre.removeChild(caretEl);
+      }
+      // Also trim trailing newline chars from pre
+      if (pre.lastChild && pre.lastChild.nodeType === 3) {
+        pre.lastChild.textContent = pre.lastChild.textContent.replace(/\n$/, "");
+      }
+      const p = document.createElement("p");
+      p.innerHTML = "<br>";
+      pre.after(p);
+      moveCaret(p, 0);
+      scheduleSave();
+    }
+  }
 });
 
 
 // =====================================================
-//  HELPERSRS
+//  HELPERS
 // =====================================================
 function plainText(html) {
   const tmp = document.createElement("div");
