@@ -8,19 +8,12 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
-  <!-- Standard favicons -->
   <link rel="icon" type="image/png" sizes="16x16" href="https://i.ibb.co/hRNzKQsc/favicon-16x16-png.png">
   <link rel="icon" type="image/png" sizes="32x32" href="https://i.ibb.co/FL2nrYJN/favicon-32x32-png.png">
   <link rel="icon" type="image/png" sizes="48x48" href="https://i.ibb.co/xSztF2Hb/favicon-48x48-png.png">
-
-  <!-- Apple Touch Icon (iOS) -->
   <link rel="apple-touch-icon" sizes="180x180" href="https://i.ibb.co/jcYvf7r/apple-touch-icon-png.png">
-
-  <!-- Android Chrome -->
   <link rel="icon" type="image/png" sizes="192x192" href="https://i.ibb.co/GfFMTwBj/android-chrome-192x192-png.png">
   <link rel="icon" type="image/png" sizes="512x512" href="https://i.ibb.co/LhSgqTzN/android-chrome-512x512-png.png">
-
-  <!-- Standaard fallback -->
   <link rel="shortcut icon" href="https://i.ibb.co/FL2nrYJN/favicon-32x32-png.png">
 </head>
 <body>
@@ -138,9 +131,7 @@
           <div class="toolbar-group">
             <button data-command="bold" title="Vet (Ctrl+B)"><b>B</b></button>
             <button data-command="italic" title="Cursief (Ctrl+I)"><i>I</i></button>
-            <button data-command="strikeThrough" title="Doorstrepen">
-              <s>S</s>
-            </button>
+            <button data-command="strikeThrough" title="Doorstrepen"><s>S</s></button>
             <button data-command="underline" title="Onderstrepen"><u>U</u></button>
           </div>
           <div class="toolbar-sep"></div>
@@ -156,7 +147,7 @@
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="9" y1="6" x2="20" y2="6"/><line x1="9" y1="12" x2="20" y2="12"/><line x1="9" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.5" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.5" fill="currentColor" stroke="none"/></svg>
             </button>
             <button data-command="insertOrderedList" title="Genummerde lijst">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4" stroke-linecap="round"/><path d="M4 10h2" /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" /></svg>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="10" y1="6" x2="21" y2="6"/><line x1="10" y1="12" x2="21" y2="12"/><line x1="10" y1="18" x2="21" y2="18"/><path d="M4 6h1v4" stroke-linecap="round"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg>
             </button>
             <button id="checklist-btn" title="Checklist">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
@@ -164,9 +155,22 @@
           </div>
           <div class="toolbar-sep"></div>
           <div class="toolbar-group">
-            <button id="highlight-btn" title="Markering" style="background:none">
-              <span style="background:#fde68a;padding:1px 5px;border-radius:3px;font-size:12px;font-weight:600">M</span>
-            </button>
+            <!-- Highlight kleurenkiezer -->
+            <div class="highlight-picker-wrap">
+              <button id="highlight-btn" title="Markering" class="highlight-btn-main">
+                <span id="highlight-preview" class="highlight-preview" style="background:#fde68a"></span>
+              </button>
+              <button id="highlight-arrow" class="highlight-arrow" title="Kies kleur">▾</button>
+              <div id="highlight-dropdown" class="highlight-dropdown hidden">
+                <button class="hl-color" data-color="#fde68a" title="Geel" style="background:#fde68a"></button>
+                <button class="hl-color" data-color="#bbf7d0" title="Groen" style="background:#bbf7d0"></button>
+                <button class="hl-color" data-color="#bfdbfe" title="Blauw" style="background:#bfdbfe"></button>
+                <button class="hl-color" data-color="#fecaca" title="Rood" style="background:#fecaca"></button>
+                <button class="hl-color" data-color="#e9d5ff" title="Paars" style="background:#e9d5ff"></button>
+                <button class="hl-color" data-color="#fed7aa" title="Oranje" style="background:#fed7aa"></button>
+                <button class="hl-color remove" data-color="" title="Verwijder markering">✕</button>
+              </div>
+            </div>
             <button data-command="formatBlock" data-value="blockquote" title="Citaat">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M3 21c3 0 7-1 7-8V5c0-1.25-.756-2.017-2-2H4c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2 1 0 1 0 1 1v1c0 1-1 2-2 2s-1 .008-1 1.031V20c0 1 0 1 1 1z"/><path d="M15 21c3 0 7-1 7-8V5c0-1.25-.757-2.017-2-2h-4c-1.25 0-2 .75-2 2v6c0 1.25.75 2 2 2h.75c0 2.25.25 4-2.75 4v3c0 1 0 1 1 1z"/></svg>
             </button>
@@ -179,12 +183,7 @@
           </div>
         </div>
 
-        <div
-          id="editor"
-          class="editor"
-          contenteditable="true"
-          spellcheck="true"
-        ></div>
+        <div id="editor" class="editor" contenteditable="true" spellcheck="true"></div>
       </div>
     </main>
   </div>
@@ -208,7 +207,6 @@
     </div>
   </div>
 
-  <!-- Firebase SDK -->
   <script type="module" src="app.js"></script>
 </body>
 </html>
